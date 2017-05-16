@@ -1,25 +1,168 @@
 ---
 title: "Reproducible Research: Peer Assessment 1"
+author: "Stacy Hoehn"
+date: "May 9, 2017"
 output: 
   html_document:
-    keep_md: true
+    keep_md: yes
 ---
 
 
 ## Loading and preprocessing the data
 
+We will first load the data into R and format the columns as integers or dates, as appropriate.
 
+
+```{r}
+library(readr)
+setwd("C:/Users/shoehn/RepData_PeerAssessment1")
+stepData <- read_csv("activity.zip",
+                    col_types = cols(date = col_date(format = "%Y-%m-%d"),
+                    steps = col_integer()))
+head(stepData)
+```
 
 ## What is mean total number of steps taken per day?
 
+For this part of the assignment, we will ignore the missing values in the dataset. First, we will calculate the total number of steps taken per day.
 
+```{r}
+dailyTotals <- aggregate(steps ~ date, data = stepData, FUN = sum, na.rm = TRUE)
+head(dailyTotals,8) #display the first 8 daily totals
+```
+
+Next, we will make a histogram of the total number of steps taken each day.
+```{r}
+hist(dailyTotals$steps,breaks=10,main="Histogram of Total Steps in a Day",
+     xlab="Daily Step Count",ylab="Frequency",col="blue")
+```
+
+Finally, we will calculate the mean and median of the total number of steps taken per day.
+```{r}
+meanDailyTotal <- mean(dailyTotals$steps,na.rm=TRUE)
+meanDailyTotal
+
+medianDailyTotal <- median(dailyTotals$steps,na.rm=TRUE)
+medianDailyTotal
+```
+The mean total number of steps taken per day is `r format(meanDailyTotal,2)` steps, while the median is `r medianDailyTotal` steps.
 
 ## What is the average daily activity pattern?
 
+In this section, we will analyze the average daily activity pattern to determine the time of day when the most steps are taken.
+
+To do this, we will first average the number of steps taken during each 5 minute interval across all days. Then, we will make a time series plot of this information.
+
+```{r}
+intervalAverages <- aggregate(steps ~ interval, data = stepData, FUN = mean, na.rm = TRUE)
+head(intervalAverages)
+
+plot(intervalAverages$interval,intervalAverages$steps,type='l',main="Daily Average Number of Steps During Each Time Interval",xlab="Time Interval", ylab="Number of Steps",col="blue",xaxt="n")
+
+#adjust the x axis labels
+axis(1, at = seq(0, 2400, by = 100),las=2)
+```
+
+We can see from the plot that the maximum number of steps seems to occur between 8:00 am and 9:00 am.   Below, we will determine exactly when it occurs. 
+```{r}
+rowNumber <- which.max(intervalAverages$steps)
+maxInterval <- intervalAverages$interval[rowNumber]
+maxInterval
+
+maxSteps <- intervalAverages$steps[rowNumber]
+maxSteps
+```
+The maximum number of steps, on average across all the days in the dataset, is approximately `r round(maxSteps)` steps and occurs during the 5-minute interval labeled `r maxInterval`.
 
 
 ## Imputing missing values
 
+Note that there are a number of days/intervals where there are missing values (coded as NA). The presence of missing days may introduce bias into some calculations or summaries of the data.  We will deal with these missing entries in this section.
+
+First, I will calculate and report the total number of missing values in the dataset (i.e. the total number of rows with NAs)
+```{r}
+sum(is.na(stepData$steps))
+sum(is.na(stepData$date))
+sum(is.na(stepData$interval))
+
+```
+
+As seen in the table above, 2304 rows are missing their step counts.  None of the rows are missing the date or time interval.  The additional analysis below shows that the missing data all came from 8 dates in 2012 (10-01, 10-08, 11-01, 11-04, 11-09, 11-10, and 11-14) when no data was recorded during any of the 288 time intervals throughout the day.
+
+```{r}
+table(stepData$date[is.na(stepData$steps)])
+```
+
+I will fill in the missing values for step counts by using the mean across all days for that 5-minute interval.  The dataset created below is equal to the original dataset but with the missing data filled in.
+
+```{r}
+
+revisedStepData <- stepData
+for (currentRow in 1:nrow(revisedStepData)){
+  if(is.na(revisedStepData$steps[currentRow])){
+        currentInterval = revisedStepData$interval[currentRow]
+        intervalRow = which(intervalAverages$interval==currentInterval)
+        revisedStepData$steps[currentRow] = intervalAverages$steps[intervalRow]
+  }
+}
+head(revisedStepData)
+```
+
+Next, I will compute the new daily totals now that the missing data has been replaced.  
+```{r}
+revisedDailyTotals <- aggregate(steps ~ date, data = revisedStepData, FUN = sum, na.rm = TRUE)
+head(revisedDailyTotals,8)
+```
+Note that the daily totals for the 8 days that previously consisted of missing entries are all the same, namely 10766.19 steps (the average daily step total), while the other daily step totals remain unchanged.   This is revealed in the histogram below, which is nearly identical to the histogram when the missing data was ignored, except the frequency for the bin corresponding to 10766.19 increased by 8 days.
+
+
+```{r}
+hist(revisedDailyTotals$steps,breaks=10,main="Histogram of Total Steps in a Day with Missing Data Filled In",
+     xlab="Daily Step Count",ylab="Frequency",col="red")
+hist(dailyTotals$steps,breaks=10,main="Histogram of Total Steps in a Day with Missing Data Filled In",
+     xlab="Daily Step Count",ylab="Frequency",col="blue",add=T)
+legend("right",c("8 new days","other days"),fill=c("red","blue"))
+```
+
+Below, I calculate the mean and median total number of steps taken per day for the revised data. 
+
+```{r}
+revisedMeanDailyTotal <- mean(revisedDailyTotals$steps,na.rm=TRUE)
+revisedMeanDailyTotal
+
+revisedMedianDailyTotal <- median(revisedDailyTotals$steps,na.rm=TRUE)
+revisedMedianDailyTotal
+```
+Because of the method I chose for replacing the missing step counts, the mean total number of steps taken per day for the revised data is `r format(revisedMeanDailyTotal,2)` steps, exactly the same as when the missing data was ignored.  Meanwhile, the median of the revised data is also `r format(revisedMedianDailyTotal,2)` steps, up slightly from the median when the missing data was ignored.
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+I will use the dataset with the filled-in missing values for this part.
+To see how activity patterns differ between weekdays and weekends, I will first add a new factor variable in the dataset with two levels - "weekday" and "weekend" indicating whether a given date is a weekday or weekend day.
+
+```{r}
+revisedStepData$period = ifelse(weekdays(revisedStepData$date) %in% 
+                                  c("Saturday","Sunday"),"weekend","weekday")
+revisedStepData$period = factor(revisedStepData$period)
+head(revisedStepData)
+```
+
+
+Next, I will average the number of steps taken during each 5 minute interval across all weekdays and across all weekends. Then, we will make a time series plot of this information.
+
+```{r}
+revisedIntervalAverages <- aggregate(steps ~ interval+period, 
+                              data = revisedStepData, FUN = mean, na.rm = TRUE)
+
+head(revisedIntervalAverages)
+
+library(lattice)
+xyplot(steps~interval|period, data=revisedIntervalAverages,type='l',layout=c(1,2),
+       xlab='Time Interval',ylab='Number of Steps',
+       main="Daily Average Number of Steps During Each Time Interval",
+       scales=list(x=list(at=seq(0,2400,200))))
+```
+
+
+As seen in the plots above, people tend to get more steps earlier in the day on weekdays than on weekends.
